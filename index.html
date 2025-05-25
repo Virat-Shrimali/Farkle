@@ -143,7 +143,9 @@
     const diceFaces = ['\u2680','\u2681','\u2682','\u2683','\u2684','\u2685'];
     let players = [{ name: 'Player 1', score: 0 }, { name: 'Player 2', score: 0 }];
     let currentPlayer = 0;
-    let currentScore = 0;
+    let rollCount = 0;
+    let turnScore = 0; // score accumulated via banking in the current turn
+    // let currentScore = 0;
     let currentDiceCount = 6;
     let diceValues = [];
     let rollUsed = false;
@@ -188,15 +190,44 @@
 
 
     function isFarkle(currentRoll, lockedDice) {
-      // If any of the freshly rolled dice are 1 or 5 → definitely not a Farkle
+      // 1. Check for immediate scoring dice (1 or 5)
       if (currentRoll.some(val => val === 1 || val === 5)) {
         return false;
       }
-      
-      // Else, evaluate the combined set for other scoring combos
+
+      // 2. Combine locked dice and current roll
       const combined = [...lockedDice, ...currentRoll];
-      return calculateScore(combined) === 0;
+
+      // 3. Count occurrences of each die face
+      const counts = Array(7).fill(0);
+      for (const die of combined) counts[die]++;
+
+      // 4. Check for straight (1–6)
+      if (counts.slice(1).every(c => c >= 1)) {
+        return false;
+      }
+
+      // 5. Check for three pairs
+      if (counts.filter(c => c === 2).length === 3) {
+        return false;
+      }
+
+      // 6. Check for two triplets
+      if (counts.filter(c => c === 3).length === 2) {
+        return false;
+      }
+
+      // 7. Check for 3+ of a kind
+      for (let i = 1; i <= 6; i++) {
+        if (counts[i] >= 3) {
+          return false;
+        }
+      }
+
+      // If none of the above apply, it's a Farkle
+      return true;
     }
+
 
 
     function isScoringDie(val) {
@@ -232,40 +263,95 @@
 
 
     function updateScoreboard() {
-      scoreboard.innerHTML = players.map((p, i) => `
-        <div class="player-score ${i === currentPlayer ? 'current' : ''}">
-          ${p.name}<br>Score: ${p.score}
-        </div>
-      `).join('');
+      scoreboard.innerHTML = players.map((p, i) => {
+        const scoreDisplay = i === currentPlayer
+          ? `Score: ${p.score} + ${turnScore}`
+          : `Score: ${p.score}`;
+        return `
+          <div class="player-score ${i === currentPlayer ? 'current' : ''}">
+            ${p.name}<br>${scoreDisplay}
+          </div>
+        `;
+      }).join('');
     }
+
+
 
     function nextTurn() {
       currentPlayer = (currentPlayer + 1) % players.length;
       currentScore = 0;
       currentDiceCount = 6;
       rollUsed = false;
+      rollCount = 0; // reset roll count
+      diceValues = [];
       selectedDiceIndices.clear();
       lockedDiceHistory = [];
+      turnScore =0; // reset the score gained this turn
+
       updateScoreboard();
       renderDice();
+      renderLockedDice();
+
+      // Enable/disable buttons appropriately
+      rollButton.disabled = false;
+      bankButton.disabled = true;
       endTurnButton.disabled = true;
+
+      // Clear any announcement messages
+      announcement.textContent = '';
     }
+
 
     rollButton.onclick = () => {
       if (rollUsed) return;
+
       diceValues = rollDice(currentDiceCount);
       renderDice();
-      if (isFarkle(diceValues, lockedDiceHistory)) {
-        announcement.textContent = 'Farkle!';
-        setTimeout(() => { announcement.textContent = ''; }, 2000);
-        nextTurn();
-        return;
-      }
-      rollUsed = true;
-      selectedDiceIndices.clear();
+
+      // Disable buttons immediately so no double click during delay
+      rollButton.disabled = true;
       bankButton.disabled = true;
-      endTurnButton.disabled = false;
+      endTurnButton.disabled = true;
+
+      // Show last roll for 1.5 seconds before evaluating Farkle or enabling buttons
+      setTimeout(() => {
+        if (isFarkle(diceValues, lockedDiceHistory)) {
+          announcement.textContent = 'Farkle!';
+          // Wait 2 seconds showing farkle message before next turn
+          setTimeout(() => {
+            announcement.textContent = '';
+            nextTurn();
+          }, 2000);
+          return;
+        }
+
+        // Not a Farkle - allow selecting dice and ending turn
+        rollUsed = true;
+        selectedDiceIndices.clear();
+        bankButton.disabled = true; // no dice selected initially
+        endTurnButton.disabled = false;
+        rollButton.disabled = false;
+
+        // Increment roll count
+        rollCount++;
+
+        // If 3 rolls used (and not farkled), auto-end turn
+        if (rollCount >= 3) {
+          announcement.textContent = 'Max rolls reached. Turn passed.';
+          
+          if (turnScore > 0) {
+            players[currentPlayer].score += turnScore;
+            updateScoreboard();
+          }
+          
+          setTimeout(() => {
+            announcement.textContent = '';
+            nextTurn();
+          }, 1500);
+        }
+      }, 1500);
     };
+
 
     bankButton.onclick = () => {
       if (!rollUsed || selectedDiceIndices.size === 0) return;
@@ -274,8 +360,8 @@
       // if (scoreSelected === 0) return;
       lockedDiceHistory.push(...selectedDice);
       renderLockedDice();
-      currentScore += scoreSelected;
-      players[currentPlayer].score += currentScore;
+      turnScore += scoreSelected;
+
       if (players[currentPlayer].score >= 10000) {
         announcement.textContent = `${players[currentPlayer].name} wins with ${players[currentPlayer].score} points!`;
         rollButton.disabled = true;
@@ -296,6 +382,10 @@
     };
 
     endTurnButton.onclick = () => {
+      if (turnScore > 0) {
+        players[currentPlayer].score += turnScore;
+        updateScoreboard();
+      }
       nextTurn();
     };
 
