@@ -336,18 +336,21 @@
         rollCount++;
 
         // If 3 rolls used (and not farkled), auto-end turn
-        if (rollCount >= 3) {
-          announcement.textContent = 'Max rolls reached. Turn passed.';
-          
+        if (rollCount%3 == 0) {
+          // announcement.textContent = 'Caution: This is your 3rd roll!';
+          // if(!isFarkle(dice)){announcement.textContent = '3 rolls done. Hot dice! Rolling all 6 again.';}
+          announcement.textContent += ' 3 rolls done. Hot dice! Rolling all 6 again.';
+          currentDiceCount = 6;
+          lockedDiceHistory = [];
+          renderLockedDice();
+          rollUsed = false;
           if (turnScore > 0) {
             players[currentPlayer].score += turnScore;
             updateScoreboard();
           }
           
-          setTimeout(() => {
-            announcement.textContent = '';
-            nextTurn();
-          }, 1500);
+          announcement.textContent += ' You may roll again.';
+          rollButton.disabled = false;
         }
       }, 1500);
     };
@@ -371,14 +374,35 @@
       }
       currentDiceCount -= selectedDice.length;
       if (currentDiceCount === 0) {
+        const faceText = selectedDice.map(val => diceFaces[val - 1]).join(' ');
+        announcement.textContent += ` All dice used! New roll unlocked. Locked: ${faceText}`;
+
+        setTimeout(() => {
+          announcement.textContent = '';
+        }, 4000);
+
         currentDiceCount = 6;
         lockedDiceHistory = [];
         renderLockedDice();       
+
+        
       }
       rollUsed = false;
       selectedDiceIndices.clear();
       renderDice();
       updateScoreboard();
+
+      // 🟨 Handle auto "hot dice" after 3rd roll
+      if (rollCount >= 3) {
+        announcement.textContent += ' 3 rolls done. Hot dice! Rolling all 6 again.';
+        currentDiceCount = 6;
+        lockedDiceHistory = [];
+        renderLockedDice();
+
+        // setTimeout(() => {
+        //   rollButton.click();
+        // }, 1500);
+      }
     };
 
     endTurnButton.onclick = () => {
